@@ -5,6 +5,20 @@
 
 If you are authoring in Java, see [Java Cadence Client](https://github.com/uber-java/cadence-client).
 
+## Clone repo
+
+Clone this repo into the correct location:
+
+```bash
+git clone git@github.com:uber-go/cadence-client.git $GOPATH/src/go.uber.org/cadence
+```
+
+or
+
+```bash
+go get go.uber.org/cadence
+```
+
 ## Samples
 
 For samples, see [Cadence Samples](https://github.com/samarabbas/cadence-samples).
