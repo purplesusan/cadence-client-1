@@ -79,7 +79,6 @@ type (
 	workflowExecutionContext struct {
 		sync.Mutex
 		workflowStartTime time.Time
-		runID             string
 		workflowInfo      *WorkflowInfo
 		wth               *workflowTaskHandlerImpl
 
@@ -125,22 +124,20 @@ type (
 
 	// history wrapper method to help information about events.
 	history struct {
-		workflowTask      *workflowTask
-		eventsHandler     *workflowExecutionEventHandlerImpl
-		loadedEvents      []*s.HistoryEvent
-		currentIndex      int
-		historyEventsSize int
-		next              []*s.HistoryEvent
+		workflowTask  *workflowTask
+		eventsHandler *workflowExecutionEventHandlerImpl
+		loadedEvents  []*s.HistoryEvent
+		currentIndex  int
+		next          []*s.HistoryEvent
 	}
 )
 
 func newHistory(task *workflowTask, eventsHandler *workflowExecutionEventHandlerImpl) *history {
 	result := &history{
-		workflowTask:      task,
-		eventsHandler:     eventsHandler,
-		loadedEvents:      task.task.History.Events,
-		currentIndex:      0,
-		historyEventsSize: len(task.task.History.Events),
+		workflowTask:  task,
+		eventsHandler: eventsHandler,
+		loadedEvents:  task.task.History.Events,
+		currentIndex:  0,
 	}
 
 	return result
@@ -160,7 +157,7 @@ func (eh *history) IsReplayEvent(event *s.HistoryEvent) bool {
 }
 
 func (eh *history) IsNextDecisionFailed() bool {
-	events := eh.workflowTask.task.History.Events
+	events := eh.loadedEvents
 	eventsSize := len(events)
 	for i := eh.currentIndex; i < eventsSize; i++ {
 		switch events[i].GetEventType() {
@@ -243,18 +240,12 @@ func (eh *history) getMoreEvents() (*s.History, error) {
 	return eh.workflowTask.historyIterator.GetNextPage()
 }
 
-func (eh *history) nextDecisionEvents() (reorderedEvents []*s.HistoryEvent, markers []*s.HistoryEvent, err error) {
+func (eh *history) nextDecisionEvents() (nextEvents []*s.HistoryEvent, markers []*s.HistoryEvent, err error) {
 	if eh.currentIndex == len(eh.loadedEvents) && !eh.hasMoreEvents() {
 		return []*s.HistoryEvent{}, []*s.HistoryEvent{}, nil
 	}
 
 	// Process events
-
-	decisionStartToCompletionEvents := []*s.HistoryEvent{}
-	decisionCompletionToStartEvents := []*s.HistoryEvent{}
-	var decisionStartedEvent *s.HistoryEvent
-	concurrentToDecision := true
-	lastDecisionIndex := -1
 
 OrderEvents:
 	for {
@@ -275,52 +266,30 @@ OrderEvents:
 		switch event.GetEventType() {
 		case s.EventTypeDecisionTaskStarted:
 			if !eh.IsNextDecisionFailed() {
-				eh.currentIndex++ // Since we already processed the current event
-				decisionStartedEvent = event
+				eh.currentIndex++
+				nextEvents = append(nextEvents, event)
 				break OrderEvents
 			}
 
-		case s.EventTypeDecisionTaskCompleted:
-			concurrentToDecision = false
-
-		case s.EventTypeDecisionTaskScheduled, s.EventTypeDecisionTaskTimedOut, s.EventTypeDecisionTaskFailed:
+		case s.EventTypeDecisionTaskCompleted,
+			s.EventTypeDecisionTaskScheduled,
+			s.EventTypeDecisionTaskTimedOut,
+			s.EventTypeDecisionTaskFailed:
 			// Skip
 		default:
-			if concurrentToDecision {
-				decisionStartToCompletionEvents = append(decisionStartToCompletionEvents, event)
-			} else {
-				if isDecisionEvent(event.GetEventType()) {
-					lastDecisionIndex = len(decisionCompletionToStartEvents)
-				}
-				if isPreloadMarkerEvent(event) {
-					markers = append(markers, event)
-				}
-				decisionCompletionToStartEvents = append(decisionCompletionToStartEvents, event)
+			if isPreloadMarkerEvent(event) {
+				markers = append(markers, event)
 			}
+			nextEvents = append(nextEvents, event)
 		}
 		eh.currentIndex++
 	}
 
-	// Reorder events to correspond to the order that decider sees them.
-	// The main difference is that events that were added during decision task execution
-	// should be processed after events that correspond to the decisions.
-	// Otherwise the replay is going to break.
+	// shrink loaded events so it can be GCed
+	eh.loadedEvents = eh.loadedEvents[eh.currentIndex:]
+	eh.currentIndex = 0
 
-	// First are events that correspond to the previous task decisions
-	if lastDecisionIndex >= 0 {
-		// Make a copy of the slice.
-		reorderedEvents = append(reorderedEvents, decisionCompletionToStartEvents[:lastDecisionIndex+1]...)
-	}
-	// Second are events that were added during previous task execution
-	reorderedEvents = append(reorderedEvents, decisionStartToCompletionEvents...)
-	// The last are events that were added after previous task completion
-	if lastDecisionIndex+1 < len(decisionCompletionToStartEvents) {
-		reorderedEvents = append(reorderedEvents, decisionCompletionToStartEvents[lastDecisionIndex+1:]...)
-	}
-	if decisionStartedEvent != nil {
-		reorderedEvents = append(reorderedEvents, decisionStartedEvent)
-	}
-	return reorderedEvents, markers, nil
+	return nextEvents, markers, nil
 }
 
 func isPreloadMarkerEvent(event *s.HistoryEvent) bool {
@@ -349,15 +318,43 @@ func newWorkflowTaskHandler(
 }
 
 // TODO: need a better eviction policy based on memory usage
-var workflowCache = cache.New(defaultStickyCacheSize, &cache.Options{
-	RemovedFunc: func(cachedEntity interface{}) {
-		wc := cachedEntity.(*workflowExecutionContext)
-		wc.onEviction()
-	},
-})
+var workflowCache cache.Cache
+var stickyCacheSize = defaultStickyCacheSize
+var initCacheOnce sync.Once
+var stickyCacheLock sync.Mutex
+
+// SetStickyWorkflowCacheSize sets the cache size for sticky workflow cache. Sticky workflow execution is the affinity
+// between decision tasks of a specific workflow execution to a specific worker. The affinity is set if sticky execution
+// is enabled via Worker.Options (It is enabled by default unless disabled explicitly). The benefit of sticky execution
+// is that workflow does not have to reconstruct the state by replaying from beginning of history events. But the cost
+// is it consumes more memory as it rely on caching workflow execution's running state on the worker. The cache is shared
+// between workers running within same process. This must be called before any worker is started. If not called, the
+// default size of 10K (might change in future) will be used.
+func SetStickyWorkflowCacheSize(cacheSize int) {
+	stickyCacheLock.Lock()
+	defer stickyCacheLock.Unlock()
+	if workflowCache != nil {
+		panic("cache already created, please set cache size before worker starts.")
+	}
+	stickyCacheSize = cacheSize
+}
+
+func getWorkflowCache() cache.Cache {
+	initCacheOnce.Do(func() {
+		stickyCacheLock.Lock()
+		defer stickyCacheLock.Unlock()
+		workflowCache = cache.New(stickyCacheSize, &cache.Options{
+			RemovedFunc: func(cachedEntity interface{}) {
+				wc := cachedEntity.(*workflowExecutionContext)
+				wc.onEviction()
+			},
+		})
+	})
+	return workflowCache
+}
 
 func getWorkflowContext(runID string) *workflowExecutionContext {
-	o := workflowCache.Get(runID)
+	o := getWorkflowCache().Get(runID)
 	if o == nil {
 		return nil
 	}
@@ -366,7 +363,7 @@ func getWorkflowContext(runID string) *workflowExecutionContext {
 }
 
 func putWorkflowContext(runID string, wc *workflowExecutionContext) (*workflowExecutionContext, error) {
-	existing, err := workflowCache.PutIfNotExist(runID, wc)
+	existing, err := getWorkflowCache().PutIfNotExist(runID, wc)
 	if err != nil {
 		return nil, err
 	}
@@ -374,17 +371,17 @@ func putWorkflowContext(runID string, wc *workflowExecutionContext) (*workflowEx
 }
 
 func removeWorkflowContext(runID string) {
-	workflowCache.Delete(runID)
+	getWorkflowCache().Delete(runID)
 }
 
 func (w *workflowExecutionContext) release() {
-	if w.err != nil || w.isWorkflowCompleted {
+	if w.err != nil || w.isWorkflowCompleted || (w.wth.disableStickyExecution && !w.hasPendingLocalActivityWork()) {
 		// TODO: in case of error, ideally, we should notify server to clear the stickiness.
 		// TODO: in case of closed, it asumes the close decision always succeed. need server side change to return
 		// error to indicate the close failure case. This should be rear case. For now, always remove the cache, and
 		// if the close decision failed, the next decision will have to rebuild the state.
 		w.destroyCachedState()
-		removeWorkflowContext(w.runID)
+		removeWorkflowContext(w.workflowInfo.WorkflowExecution.RunID)
 	}
 
 	w.Unlock()
@@ -483,6 +480,7 @@ func (wth *workflowTaskHandlerImpl) getOrCreateWorkflowContext(task *s.PollForDe
 			workflowContext.laTunnel = wth.laTunnel
 			workflowContext.decisionStartTime = time.Now()
 		}
+		wth.metricsScope.Gauge(metrics.StickyCacheSize).Update(float64(workflowCache.Size()))
 	}()
 
 	skipReplayCheck = task.Query != nil
@@ -705,7 +703,7 @@ func (wth *workflowTaskHandlerImpl) ProcessLocalActivityResult(lar *localActivit
 }
 
 func (w *workflowExecutionContext) CompleteDecisionTask() interface{} {
-	if !w.isWorkflowCompleted && len(w.eventHandler.pendingLaTasks) > 0 {
+	if w.hasPendingLocalActivityWork() {
 		if len(w.eventHandler.unstartedLaTasks) > 0 {
 			// start new local activity tasks
 			for activityID := range w.eventHandler.unstartedLaTasks {
@@ -724,6 +722,10 @@ func (w *workflowExecutionContext) CompleteDecisionTask() interface{} {
 	w.newDecisions = nil
 
 	return completeRequest
+}
+
+func (w *workflowExecutionContext) hasPendingLocalActivityWork() bool {
+	return !w.isWorkflowCompleted && len(w.eventHandler.pendingLaTasks) > 0
 }
 
 func skipDeterministicCheckForDecision(d *s.Decision) bool {
