@@ -122,6 +122,11 @@ func SimpleWorkflow(workflow.Context ctx, value string) error {
     return workflow.NewContinueAsNewError(ctx, SimpleWorkflow, value)
 }
 ```
+## Failing a workflow
+
+To mark a workflow as failed, the workflow function needs to return an error via the `err` return
+value.
+
 ## Special Cadence client library functions and types
 
 The Cadence client library provides a number of functions and types as alternatives to some native Go
