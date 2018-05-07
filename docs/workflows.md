@@ -10,7 +10,7 @@ recreated on the worker executing the step.
 
 To facilitate this operational model, both the Cadence programming framework and the managed service
 impose some requrirements and restrictions on the implementation of the coordination logic. These
-requirements and restrictions are outlined in the [Implementation](#Implementation) section.
+requirements and restrictions are outlined in the [Implementation](#implementation) section.
 
 ## Overview
 
