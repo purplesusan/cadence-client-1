@@ -141,7 +141,7 @@ Time related functions:
 ## See also
 
 
-[Child workflows[(child_workflows.md)
+[Child workflows](child_workflows.md)
 
 [Error handling](workflow_error_handling.md)
 
