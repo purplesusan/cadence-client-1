@@ -21,7 +21,7 @@ if err := future.Get(ctx, &result); err != nil {
         return err
 }
 ```
-Let's take a look at each component of this call:
+Let's take a look at each component of this call.
 
 Before calling `workflow.ExecuteActivity()`, you must configure `ActivityOptions` for the
 invocation. These options customize various execution timeouts, and are passed in by creating a child
