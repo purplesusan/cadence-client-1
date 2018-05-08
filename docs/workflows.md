@@ -124,7 +124,7 @@ func SimpleWorkflow(workflow.Context ctx, value string) error {
 ```
 ## Failing a workflow
 
-To mark a workflow as failed, the workflow function needs to return an error via the `err` return
+To mark a workflow as failed, the workflow function must return an error via the `err` return
 value.
 
 ## Special Cadence client library functions and types
