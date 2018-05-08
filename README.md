@@ -32,6 +32,47 @@ Run Cadence Server using Docker Compose:
 
 If this does not work, see instructions for running the Cadence Server at https://github.com/uber/cadence/blob/master/README.md.
 
+## Sample workflow
+
+Following code demonstrates a sample workflow. For detailed information about the code, see [Workflows](docs/workflows.md).
+
+```go
+package simple
+
+import (
+	"time"
+
+
+	"go.uber.org/cadence/workflow"
+	"go.uber.org/zap"
+)
+
+func init() {
+	workflow.Register(SimpleWorkflow)
+}
+
+// SimpleWorkflow is a sample Cadence workflow that accepts one parameter and
+// executes an activity to which it passes the aforementioned parameter.
+func SimpleWorkflow(ctx workflow.Context, value string) error {
+	options := workflow.ActivityOptions{
+		ScheduleToStartTimeout: time.Second * 60,
+		StartToCloseTimeout:    time.Second * 60,
+	}
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	var result string
+	err := workflow.ExecuteActivity(ctx, activity.SimpleActivity, value).Get(ctx, &result)
+	if err != nil {
+		return err
+	}
+	workflow.GetLogger(ctx).Info(
+		"SimpleActivity returned successfully!", zap.String("Result", result))
+
+	workflow.GetLogger(ctx).Info("SimpleWorkflow completed!")
+	return nil
+}
+```
+
 ## Contributing
 We'd love your help in making Cadence-client great. Please review our [instructions](CONTRIBUTING.md).
 
