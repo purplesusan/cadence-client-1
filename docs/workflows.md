@@ -1,5 +1,6 @@
 # Workflows
 
+
 A workflow is the implementation of coordination logic. The Cadence programming framework (the client
 library) allows you to write the coordination logic as simple procedural code that uses standard Go
 data modeling. The client library takes care of the communication between the worker service and the
@@ -157,3 +158,43 @@ Time related functions:
 [Workflow APIs](workflow_api.md)
 
 [Workflow versioning](workflow_versioning.md)
+=======
+In order to make the workflow visible to the worker process hosting it, the workflow needs to be registered via a call to **workflow.Register**.
+
+```go
+package simple
+
+import (
+	"time"
+
+
+	"go.uber.org/cadence/workflow"
+	"go.uber.org/zap"
+)
+
+func init() {
+	workflow.Register(SimpleWorkflow)
+}
+
+// SimpleWorkflow is a sample Cadence workflow that accepts one parameter and
+// executes an activity to which it passes the aforementioned parameter.
+func SimpleWorkflow(ctx workflow.Context, value string) error {
+	options := workflow.ActivityOptions{
+		ScheduleToStartTimeout: time.Second * 60,
+		StartToCloseTimeout:    time.Second * 60,
+	}
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	var result string
+	err := workflow.ExecuteActivity(ctx, activity.SimpleActivity, value).Get(ctx, &result)
+	if err != nil {
+		return err
+	}
+	workflow.GetLogger(ctx).Info(
+		"SimpleActivity returned successfully!", zap.String("Result", result))
+
+	workflow.GetLogger(ctx).Info("SimpleWorkflow completed!")
+	return nil
+}
+```
+

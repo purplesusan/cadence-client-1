@@ -34,7 +34,7 @@ If this does not work, see instructions for running the Cadence Server at https:
 
 ## Sample workflow
 
-Following code demonstrates a sample workflow. For detailed information about the code, see <topic>.
+Following code demonstrates a sample workflow. For detailed information about the code, see [Workflows](docs/workflows.md).
 
 ```go
 package simple
