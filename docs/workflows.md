@@ -20,7 +20,7 @@ part of its initialization as a parameter to the activity.
 
 Let's take a look at each component of this workflow.
 
-## Declaration
+### Declaration
 
 In the Cadence programming model, a workflow is implemented with a function. The function declaration
 specifies the parameters the workflow accepts as well as any values it might return.
@@ -42,7 +42,7 @@ Since the function only declares error as the return value, the workflow does no
 error return value is used to indicate whether an error was encountered during execution and the workflow
 should be terminated.
 
-## Implementation
+### Implementation
 
 To support the synchronous and sequential programming model for the workflow implementation, there are
 restrictions and requirements on how the workflow implementation must behave in order to guarantee
@@ -66,7 +66,7 @@ To meet these requirements, your workflow code should follow these guidelines:
 * Don’t perform any IO or service calls as they are not usually deterministic. Use activities for that.
 * Don’t access configuration APIs directly from a workflow as changes in configuration will affect the workflow execution path. Either return configuration from an activity or use `workflow.SideEffect` to load it.
 
-## Registration
+### Registration
 
 In order to make the workflow visible to the worker process hosting it, the workflow needs to be registered via a call to `workflow.Register`.
 
