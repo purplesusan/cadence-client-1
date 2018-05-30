@@ -39,13 +39,9 @@ are executed *at most once*, so an activity either succeeds or fails with one of
 Timeout | Description
 --- | ---
 `StartToCloseTimeout` | Maximum time that a worker can take to process a task after it has received the task.
-`ScheduleToStartTimeout` | Time a task can wait to be picked up by an activity worker after a workflow
-schedules it. If there are no workers available to process this task for the specified duration, the
-task will timeout.
-`ScheduleToCloseTimeout` | Time a task can take to complete after it is scheduled by a workflow. This is
-usually greater than the sum of `StartToClose` and `ScheduleToStart` timetouts.
-`HeartbeatTimeout` | If a task doesn't heartbeat to the Cadence service for this duration, it will be
-considered to have failed. This is useful for long-running tasks.
+`ScheduleToStartTimeout` | Time a task can wait to be picked up by an activity worker after a workflow schedules it. If there are no workers available to process this task for the specified duration, the task will timeout.
+`ScheduleToCloseTimeout` | Time a task can take to complete after it is scheduled by a workflow. This is usually greater than the sum of `StartToClose` and `ScheduleToStart` timetouts.
+`HeartbeatTimeout` | If a task doesn't heartbeat to the Cadence service for this duration, it will be considered to have failed. This is useful for long-running tasks.
 
 The first parameter in the call is the required `cadence.Context` object. This type is a copy of
 `context.Context` with the `Done()` method returning `cadence.Channel` instead of the native Go `chan`.
