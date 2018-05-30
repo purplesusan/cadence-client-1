@@ -104,6 +104,12 @@ if len(signalVal) > 0 && signalVal != "SOME_VALUE" {
 }
 ```
 
+Signals have the following properties:
+- Signals have a name. There are no restrictions on the message format.
+- Signals are received by the workflow through a named channel.
+- Signals do not have to be pre-registered with a service; they appear on the fly.
+- Signals are part of the execution state and have the same strong durability guarantees.
+
 ## ContinueAsNew workflow completion
 
 Workflows that need to rerun periodically could naively be implemented as a big **for loop** with a
