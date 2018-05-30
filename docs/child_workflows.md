@@ -51,3 +51,6 @@ available.
 The `workflow.ExecuteChildWorkflow()` function is similar to `workflow.ExecuteActivity()`. All of the
 patterns described for using `workflow.ExecuteActivity()` apply to the `workflow.ExecuteChildWorkflow()`
 function as well.
+
+When a parent workflow is cancelled by the user, the child workflow can be cancelled or abandoned
+based on a configurable child policy.
