@@ -43,6 +43,8 @@ Timeout | Description
 `ScheduleToCloseTimeout` | Time a task can take to complete after it is scheduled by a workflow. This is usually greater than the sum of `StartToClose` and `ScheduleToStart` timetouts.
 `HeartbeatTimeout` | If a task doesn't heartbeat to the Cadence service for this duration, it will be considered to have failed. This is useful for long-running tasks.
 
+## ExecuteActivity call
+
 The first parameter in the call is the required `cadence.Context` object. This type is a copy of
 `context.Context` with the `Done()` method returning `cadence.Channel` instead of the native Go `chan`.
 
